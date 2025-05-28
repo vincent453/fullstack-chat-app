@@ -1,8 +1,8 @@
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
-
 import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
+import { createNotification } from "./notification.controller.js";
 
 export const getUsersForSidebar = async (req, res) => {
   try {
@@ -57,10 +57,29 @@ export const sendMessage = async (req, res) => {
 
     await newMessage.save();
 
+    // Populate sender info for notification
+    await newMessage.populate('senderId', 'fullName profilePic');
+
     const receiverSocketId = getReceiverSocketId(receiverId);
+    
     if (receiverSocketId) {
+      // Send the message
       io.to(receiverSocketId).emit("newMessage", newMessage);
     }
+
+    // Create persistent notification
+    const notificationMessage = text ? 
+      (text.length > 50 ? text.substring(0, 50) + '...' : text) : 
+      'Sent an image';
+
+    await createNotification(
+      receiverId,
+      senderId,
+      'message',
+      `New message from ${newMessage.senderId.fullName}`,
+      notificationMessage,
+      { messageId: newMessage._id }
+    );
 
     res.status(201).json(newMessage);
   } catch (error) {
